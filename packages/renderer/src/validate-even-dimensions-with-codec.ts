@@ -1,17 +1,29 @@
-import {Codec, Internals} from 'remotion';
+import type {Codec} from './codec';
+import {truthy} from './truthy';
 
 export const validateEvenDimensionsWithCodec = ({
 	width,
 	height,
 	codec,
 	scale,
+	wantsImageSequence,
 }: {
 	width: number;
 	height: number;
 	scale: number;
 	codec: Codec;
+	wantsImageSequence: boolean;
 }) => {
-	if (codec !== 'h264-mkv' && codec !== 'h264' && codec !== 'h265') {
+	if (wantsImageSequence) {
+		return;
+	}
+
+	if (
+		codec !== 'h264-mkv' &&
+		codec !== 'h264' &&
+		codec !== 'h265' &&
+		codec !== 'h264-ts'
+	) {
 		return;
 	}
 
@@ -28,7 +40,7 @@ export const validateEvenDimensionsWithCodec = ({
 				? `Change the width to ${Math.floor(width - 1)}px to fix this issue.`
 				: `You have used the "scale" option which might be the reason for the problem: The original width is ${width} and the scale is ${scale}x, which was multiplied to get the actual width.`,
 		]
-			.filter(Internals.truthy)
+			.filter(truthy)
 			.join(' ');
 		throw new Error(message);
 	}
