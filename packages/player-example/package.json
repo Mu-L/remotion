@@ -1,6 +1,9 @@
 {
-	"name": "player-example",
-	"version": "2.6.12",
+	"repository": {
+		"url": "https://github.com/remotion-dev/remotion/tree/main/packages/player-example"
+	},
+	"name": "@remotion/player-example",
+	"version": "4.0.269",
 	"private": true,
 	"author": "Jonny Burger <jonny@remotion.dev>",
 	"maintainers": [
@@ -8,40 +11,24 @@
 		"Shankhadeep Dey <shankhadeepdey99@gmail.com>"
 	],
 	"dependencies": {
-		"@craco/craco": "^6.1.1",
-		"@remotion/player": "2.6.12",
-		"@testing-library/jest-dom": "^5.11.4",
-		"@testing-library/react": "^11.1.0",
-		"@testing-library/user-event": "^12.1.10",
-		"@types/jest": "^27.4.0",
-		"@types/node": "^12.0.0",
-		"@types/react": "17.0.39",
-		"@types/react-dom": "^17.0.11",
-		"react": "^17.0.1",
-		"react-dom": "^17.0.1",
-		"react-scripts": "4.0.3",
-		"remotion": "2.6.12",
-		"typescript": "^4.5.5"
+		"@remotion/bundler": "workspace:*",
+		"@remotion/eslint-config-flat": "workspace:*",
+		"@remotion/gif": "workspace:*",
+		"@remotion/google-fonts": "workspace:*",
+		"@remotion/player": "workspace:*",
+		"@remotion/preload": "workspace:*",
+		"next": "15.1.6",
+		"react": "19.0.0",
+		"react-dom": "19.0.0",
+		"remotion": "workspace:*"
+	},
+	"devDependencies": {
+		"eslint": "9.19.0"
 	},
 	"scripts": {
-		"start": "craco start"
-	},
-	"eslintConfig": {
-		"extends": [
-			"react-app",
-			"react-app/jest"
-		]
-	},
-	"browserslist": {
-		"production": [
-			">0.2%",
-			"not dead",
-			"not op_mini all"
-		],
-		"development": [
-			"last 1 chrome version",
-			"last 1 firefox version",
-			"last 1 safari version"
-		]
+		"formatting": "prettier src --check",
+		"lint": "eslint src",
+		"dev": "next dev",
+		"build-site": "next build"
 	}
 }
