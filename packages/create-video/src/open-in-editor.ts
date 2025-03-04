@@ -10,12 +10,13 @@
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  */
-import util from 'util';
-
-import fs from 'fs';
-import path from 'path';
-import child_process, {ChildProcess, exec} from 'child_process';
-import os from 'os';
+import type {ChildProcess} from 'node:child_process';
+import child_process, {exec} from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import util from 'node:util';
+import {Log} from './log';
 
 const execProm = util.promisify(exec);
 
@@ -26,7 +27,11 @@ export const isVsCodeDerivative = (editor: Editor) => {
 		editor === 'Code.exe' ||
 		editor === 'vscodium' ||
 		editor === 'VSCodium.exe' ||
-		editor === 'Code - Insiders.exe'
+		editor === 'Code - Insiders.exe' ||
+		editor === 'cursor' ||
+		editor === 'Cursor.exe' ||
+		editor === 'windsurf' ||
+		editor === 'Windsurf.exe'
 	);
 };
 
@@ -41,6 +46,7 @@ export function isTerminalEditor(editor: Editor) {
 	}
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const editorNames = [
 	'atom',
 	'/Applications/Atom Beta.app/Contents/MacOS/Atom Beta',
@@ -51,6 +57,8 @@ const editorNames = [
 	'code',
 	'code-insiders',
 	'vscodium',
+	'cursor',
+	'Cursor.exe',
 	'/Applications/AppCode.app/Contents/MacOS/appcode',
 	'/Applications/CLion.app/Contents/MacOS/clion',
 	'/Applications/IntelliJ IDEA.app/Contents/MacOS/idea',
@@ -97,6 +105,11 @@ const editorNames = [
 	'rider.exe',
 	'rider64.exe',
 	'nano',
+	'windsurf',
+	'Windsurf.exe',
+	'Zed.exe',
+	'Cursor.exe',
+	'zed',
 ] as const;
 
 const displayNameForEditor: {[key in Editor]: string} = {
@@ -121,12 +134,17 @@ const displayNameForEditor: {[key in Editor]: string} = {
 	'Code - Insiders.exe': 'VS Code Insiders',
 	'Code.exe': 'VS Code',
 	'VSCodium.exe': 'VS Codium',
+	'Cursor.exe': 'Cursor',
+	'Windsurf.exe': 'Windsurf',
+	'Zed.exe': 'Zed',
 	'atom.exe': 'Atom',
 	'clion.exe': 'CLion',
 	'clion64.exe': 'CLion',
 	'code-insiders': 'VS Code Insiders',
+	cursor: 'Cursor',
 	'goland.exe': 'GoLand',
 	'goland64.exe': 'GoLand',
+	goland: 'GoLand',
 	'idea.exe': 'IDEA',
 	'idea64.exe': 'IDEA',
 	'notepad++.exe': 'Notepad++',
@@ -145,7 +163,8 @@ const displayNameForEditor: {[key in Editor]: string} = {
 	brackets: 'Brackets',
 	code: 'VS Code',
 	emacs: 'emacs',
-	goland: 'GoLand',
+	windsurf: 'Windsurf',
+	zed: 'Zed',
 	gvim: 'GVim',
 	idea: 'IDEA',
 	mvim: 'mvim',
@@ -160,17 +179,19 @@ const displayNameForEditor: {[key in Editor]: string} = {
 	nano: 'nano',
 };
 
-export const getDisplayNameForEditor = (
-	editor: Editor | undefined
-): string | null => {
-	if (!editor) {
-		return null;
-	}
+export const getDisplayNameForEditor = (editor: Editor): string => {
+	const endsIn = Object.keys(displayNameForEditor).find((displayNameKey) => {
+		return editor.endsWith(displayNameKey);
+	});
 
-	return displayNameForEditor[editor] ?? editor;
+	return (
+		displayNameForEditor[editor] ??
+		displayNameForEditor[endsIn as keyof typeof displayNameForEditor] ??
+		editor
+	);
 };
 
-type Editor = typeof editorNames[number];
+type Editor = (typeof editorNames)[number];
 
 // Map from full process name to binary that starts the process
 // We can't just re-use full process name, because it will spawn a new instance
@@ -190,6 +211,7 @@ const COMMON_EDITORS_OSX: Record<string, Editor> = {
 	'/Applications/Visual Studio Code - Insiders.app/Contents/MacOS/Electron':
 		'code-insiders',
 	'/Applications/VSCodium.app/Contents/MacOS/Electron': 'vscodium',
+	'/Applications/Cursor.app/Contents/MacOS/Cursor': 'cursor',
 	'/Applications/AppCode.app/Contents/MacOS/appcode':
 		'/Applications/AppCode.app/Contents/MacOS/appcode',
 	'/Applications/CLion.app/Contents/MacOS/clion':
@@ -219,6 +241,7 @@ const COMMON_EDITORS_LINUX: Record<string, Editor> = {
 	code: 'code',
 	'code-insiders': 'code-insiders',
 	vscodium: 'vscodium',
+	cursor: 'cursor',
 	emacs: 'emacs',
 	gvim: 'gvim',
 	'idea.sh': 'idea',
@@ -237,6 +260,7 @@ const COMMON_EDITORS_WIN: Editor[] = [
 	'Code.exe',
 	'Code - Insiders.exe',
 	'VSCodium.exe',
+	'Cursor.exe',
 	'atom.exe',
 	'sublime_text.exe',
 	'notepad++.exe',
@@ -268,7 +292,7 @@ function getArgumentsForLineNumber(
 	editor: Editor,
 	fileName: string,
 	lineNumber: string,
-	colNumber: number
+	colNumber: number,
 ) {
 	const editorBasename = path.basename(editor).replace(/\.(exe|cmd|bat)$/i, '');
 	switch (editorBasename) {
@@ -302,6 +326,8 @@ function getArgumentsForLineNumber(
 		case 'Code - Insiders':
 		case 'vscodium':
 		case 'VSCodium':
+		case 'Cursor.exe':
+		case 'cursor':
 			return ['-g', fileName + ':' + lineNumber + ':' + colNumber];
 		case 'appcode':
 		case 'clion':
@@ -329,19 +355,27 @@ function getArgumentsForLineNumber(
 	}
 }
 
-export async function guessEditor(): Promise<Editor[]> {
+type ProcessAndCommand = {
+	process: string;
+	command: Editor;
+};
+
+export async function guessEditor(): Promise<ProcessAndCommand[]> {
 	// We can find out which editor is currently running by:
 	// `ps x` on macOS and Linux
 	// `Get-Process` on Windows
-	const availableEditors: Editor[] = [];
+	const availableEditors: ProcessAndCommand[] = [];
 	try {
 		if (process.platform === 'darwin') {
 			const output = (await execProm('ps x')).stdout.toString();
 			const processNames = Object.keys(COMMON_EDITORS_OSX);
 			for (let i = 0; i < processNames.length; i++) {
-				const processName = processNames[i];
+				const processName = processNames[i] as string;
 				if (output.indexOf(processName) !== -1) {
-					availableEditors.push(COMMON_EDITORS_OSX[processName]);
+					availableEditors.push({
+						process: processName,
+						command: COMMON_EDITORS_OSX[processName] as Editor,
+					});
 				}
 			}
 
@@ -353,15 +387,18 @@ export async function guessEditor(): Promise<Editor[]> {
 			// Just filter them out upfront. This also saves 10-20ms on the command.
 			const output = (
 				await execProm(
-					'wmic process where "executablepath is not null" get executablepath'
+					'wmic process where "executablepath is not null" get executablepath',
 				)
 			).stdout.toString();
 			const runningProcesses = output.split('\r\n');
 			for (let i = 0; i < runningProcesses.length; i++) {
-				const processPath = runningProcesses[i].trim();
+				const processPath = (runningProcesses[i] as string).trim();
 				const processName = path.basename(processPath);
 				if (COMMON_EDITORS_WIN.indexOf(processName as Editor) !== -1) {
-					availableEditors.push(processPath as Editor);
+					availableEditors.push({
+						process: processPath,
+						command: processPath as Editor,
+					});
 				}
 			}
 
@@ -377,25 +414,38 @@ export async function guessEditor(): Promise<Editor[]> {
 			).stdout.toString();
 			const processNames = Object.keys(COMMON_EDITORS_LINUX);
 			for (let i = 0; i < processNames.length; i++) {
-				const processName = processNames[i];
+				const processName = processNames[i] as string;
 				if (output.indexOf(processName) !== -1) {
-					availableEditors.push(COMMON_EDITORS_LINUX[processName]);
+					availableEditors.push({
+						process: processName,
+						command: COMMON_EDITORS_LINUX[processName] as Editor,
+					});
 				}
 			}
 
 			return availableEditors;
 		}
-	} catch (error) {
+	} catch {
 		// Ignore...
 	}
 
 	// Last resort, use old skool env vars
 	if (process.env.VISUAL) {
-		return [process.env.VISUAL as Editor];
+		return [
+			{
+				process: process.env.VISUAL as Editor,
+				command: process.env.VISUAL as Editor,
+			},
+		];
 	}
 
 	if (process.env.EDITOR) {
-		return [process.env.EDITOR as Editor];
+		return [
+			{
+				process: process.env.EDITOR as Editor,
+				command: process.env.EDITOR as Editor,
+			},
+		];
 	}
 
 	return [];
@@ -403,7 +453,7 @@ export async function guessEditor(): Promise<Editor[]> {
 
 let _childProcess: ChildProcess | null = null;
 
-export function launchEditor({
+export async function launchEditor({
 	colNumber,
 	editor,
 	fileName,
@@ -413,9 +463,9 @@ export function launchEditor({
 	fileName: string;
 	lineNumber: number;
 	colNumber: number;
-	editor: Editor;
+	editor: ProcessAndCommand;
 	vsCodeNewWindow: boolean;
-}): boolean {
+}): Promise<boolean> {
 	if (!fs.existsSync(fileName)) {
 		return false;
 	}
@@ -433,7 +483,7 @@ export function launchEditor({
 		colNumber = 1;
 	}
 
-	if (editor.toLowerCase() === 'none') {
+	if (editor.command.toLowerCase() === 'none') {
 		return false;
 	}
 
@@ -459,59 +509,80 @@ export function launchEditor({
 		process.platform === 'win32' &&
 		!WINDOWS_FILE_NAME_WHITELIST.test(fileName.trim())
 	) {
-		console.log();
-		console.log(
-			'Could not open ' + path.basename(fileName) + ' in the editor.'
-		);
-		console.log();
-		console.log(
+		Log.info();
+		Log.info('Could not open ' + path.basename(fileName) + ' in the editor.');
+		Log.info();
+		Log.info(
 			'When running on Windows, file names are checked against a whitelist ' +
 				'to protect against remote code execution attacks. File names may ' +
 				'consist only of alphanumeric characters (all languages), periods, ' +
-				'dashes, slashes, and underscores.'
+				'dashes, slashes, and underscores.',
 		);
-		console.log();
+		Log.info();
 		return false;
 	}
 
 	const shouldOpenVsCodeNewWindow =
-		isVsCodeDerivative(editor) && vsCodeNewWindow;
+		isVsCodeDerivative(editor.command) && vsCodeNewWindow;
 
 	const args = shouldOpenVsCodeNewWindow
 		? ['--new-window', fileName]
 		: lineNumber
-		? getArgumentsForLineNumber(editor, fileName, String(lineNumber), colNumber)
-		: [fileName];
+			? getArgumentsForLineNumber(
+					editor.command,
+					fileName,
+					String(lineNumber),
+					colNumber,
+				)
+			: [fileName];
 
-	if (_childProcess && isTerminalEditor(editor)) {
+	if (_childProcess && isTerminalEditor(editor.command)) {
 		// There's an existing editor process already and it's attached
 		// to the terminal, so go kill it. Otherwise two separate editor
 		// instances attach to the stdin/stdout which gets confusing.
 		_childProcess.kill('SIGKILL');
 	}
 
+	const isWin = os.platform() === 'win32';
+	const where = isWin ? 'where' : 'which';
+
+	const binaryToUse = await new Promise<string>((resolve) => {
+		if (editor.command === editor.process) {
+			resolve(editor.command);
+			return;
+		}
+
+		child_process.exec(`${where} "${editor.command}"`, (err) => {
+			if (err) {
+				resolve(editor.process);
+			} else {
+				resolve(editor.command);
+			}
+		});
+	});
+
 	if (process.platform === 'win32') {
 		// On Windows, launch the editor in a shell because spawn can only
 		// launch .exe files.
 		_childProcess = child_process.spawn(
 			'cmd.exe',
-			['/C', editor].concat(args),
-			{stdio: 'inherit'}
+			['/C', binaryToUse].concat(args),
+			{stdio: 'inherit', detached: true},
 		);
 	} else {
-		_childProcess = child_process.spawn(editor, args, {stdio: 'inherit'});
+		_childProcess = child_process.spawn(binaryToUse, args, {stdio: 'inherit'});
 	}
 
 	_childProcess.on('exit', (errorCode) => {
 		_childProcess = null;
 
 		if (errorCode) {
-			console.log(`Process exited with code ${errorCode}`);
+			Log.info(`Process exited with code ${errorCode}`);
 		}
 	});
 
 	_childProcess.on('error', (error) => {
-		console.log('Error opening file in editor', fileName, error.message);
+		Log.info('Error opening file in editor', fileName, error.message);
 	});
 	return true;
 }
